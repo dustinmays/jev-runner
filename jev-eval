@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+"""Unix-style JSON filter around TypeSafe's Jev: state + questions in, typed answers out.
+
+    cat request.json | jev-eval
+
+stdin: one JSON object {"state": ..., "questions": {...}, "model"?: "jev-latest"}
+stdout: structured JSON only (either the answer envelope, or {"ok": false, "error": ...})
+stderr: diagnostics
+exit code: nonzero on validation/API failure
+
+This tool makes no policy decisions - it returns typed probabilities/scores and
+leaves what to do with them entirely to the caller.
+"""
+
+import json
+import os
+import sys
+import urllib.error
+import urllib.request
+
+ENDPOINT = os.environ.get("TYPESAFE_ENDPOINT", "https://api.typesafe.ai/v1/systemone")
+DEFAULT_MODEL = "jev-latest"
+VALID_TYPES = {"noul", "choice", "score"}
+
+
+def fail(message: str) -> None:
+    print(json.dumps({"ok": False, "error": message}))
+    print(message, file=sys.stderr)
+    sys.exit(1)
+
+
+def validate(request: dict) -> None:
+    if not isinstance(request, dict):
+        fail("input must be a JSON object")
+    if "state" not in request:
+        fail("missing required field: state")
+    questions = request.get("questions")
+    if not isinstance(questions, dict) or not questions:
+        fail("missing or empty required field: questions")
+    for key, q in questions.items():
+        if not isinstance(q, dict) or "type" not in q or "instructions" not in q:
+            fail(f"question '{key}' needs at least 'type' and 'instructions'")
+        if q["type"] not in VALID_TYPES:
+            fail(f"question '{key}' has invalid type '{q['type']}' (must be noul, choice, or score)")
+        if q["type"] == "choice" and not isinstance(q.get("criteria"), dict):
+            fail(f"choice question '{key}' needs a 'criteria' object mapping option -> description")
+        if q["type"] == "score":
+            criteria = q.get("criteria")
+            if not isinstance(criteria, list) or not (2 <= len(criteria) <= 10):
+                fail(f"score question '{key}' needs a 'criteria' array of 2-10 level descriptions")
+
+
+def normalize(answer: dict) -> dict:
+    kind = answer.get("type")
+    if kind == "noul":
+        return {"type": "noul", "value": answer.get("noul")}
+    if kind == "choice":
+        probabilities = answer.get("probabilities", {})
+        ranking = sorted(probabilities.items(), key=lambda kv: kv[1], reverse=True)
+        return {
+            "type": "choice",
+            "value": answer.get("choice"),
+            "confidence": answer.get("confidence"),
+            "probabilities": probabilities,
+            "ranking": [[option, prob] for option, prob in ranking],
+        }
+    if kind == "score":
+        return {
+            "type": "score",
+            "value": answer.get("score"),
+            "confidence": answer.get("confidence"),
+            "probabilities": answer.get("probabilities", {}),
+            "legend": answer.get("legend", {}),
+        }
+    return answer
+
+
+def main() -> None:
+    api_key = os.environ.get("TYPESAFE_API_KEY")
+    if not api_key:
+        fail("TYPESAFE_API_KEY is not set")
+
+    try:
+        request = json.load(sys.stdin)
+    except json.JSONDecodeError as e:
+        fail(f"stdin is not valid JSON: {e}")
+
+    validate(request)
+
+    body = json.dumps(
+        {
+            "model": request.get("model", DEFAULT_MODEL),
+            "state": request["state"],
+            "questions": request["questions"],
+        }
+    ).encode("utf-8")
+
+    req = urllib.request.Request(
+        ENDPOINT,
+        data=body,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            raw = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        fail(f"Jev request failed: {e.code} {e.read().decode('utf-8', 'replace')}")
+    except urllib.error.URLError as e:
+        fail(f"Request to {ENDPOINT} failed: {e.reason}")
+
+    answers = {key: normalize(answer) for key, answer in raw.get("answers", {}).items()}
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "model": raw.get("model"),
+                "answers": answers,
+                "usage": raw.get("usage", {}),
+                "raw": raw,
+            }
+        )
+    )
+
+
+if __name__ == "__main__":
+    main()

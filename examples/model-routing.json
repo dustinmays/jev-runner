@@ -1,0 +1,63 @@
+{
+  "state": {
+    "task": {
+      "summary": "Investigate and fix failing OAuth callback handling",
+      "requested_outcome": "Working implementation with tests"
+    },
+    "current_state": {
+      "phase": "implementation",
+      "attempts": 2,
+      "new_findings": [
+        "Provider behavior differs from documentation",
+        "Existing abstraction does not expose required token metadata"
+      ]
+    },
+    "environment": {
+      "language": "typescript",
+      "repo_access": true,
+      "web_access": true
+    },
+    "constraints": {
+      "prefer_low_cost": true,
+      "human_interruptions_are_expensive": true
+    },
+    "available_agents": {
+      "coding": "Implements and tests software changes",
+      "research": "Investigates external systems and documentation",
+      "general": "Handles mixed or ambiguous work"
+    }
+  },
+  "questions": {
+    "agent": {
+      "type": "choice",
+      "instructions": "Which agent is best suited to own the next phase of work?",
+      "criteria": {
+        "coding": "Primarily implementation, debugging, or tests",
+        "research": "Primarily investigation or external information gathering",
+        "general": "Mixed work where neither specialist clearly dominates"
+      }
+    },
+    "reasoning_requirement": {
+      "type": "score",
+      "instructions": "How much reasoning capability is required for the next phase?",
+      "criteria": [
+        "Routine and highly constrained",
+        "Some judgment but straightforward",
+        "Substantial ambiguity or multi-step reasoning",
+        "Very difficult or unusually subtle"
+      ]
+    },
+    "current_route_still_adequate": {
+      "type": "noul",
+      "instructions": "Is the current coding-focused execution approach still adequate given what has been discovered?",
+      "criteria": {
+        "true": "Continuing the existing approach is reasonable",
+        "false": "The new information materially changes the nature of the task"
+      }
+    },
+    "needs_current_web_information": {
+      "type": "noul",
+      "instructions": "Does completing the next phase depend materially on current external information?"
+    }
+  }
+}
