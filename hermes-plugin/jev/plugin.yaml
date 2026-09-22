@@ -1,0 +1,10 @@
+name: jev
+version: 1.0.0
+description: Fast structured decisions (yes/no/uncertain/likely or category choice) via TypeSafe's Jev model on OpenRouter
+provides_tools:
+  - jev_ask
+requires_env:
+  - name: OPENROUTER_API_KEY
+    description: "OpenRouter API key, used to call Jev's decisions endpoint"
+    url: "https://openrouter.ai/settings/keys"
+    secret: true
